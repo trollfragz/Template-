@@ -14,7 +14,7 @@ button{cursor:pointer}button.pri{background:#2d6cdf;border-color:#2d6cdf}
 #cv{width:100%;max-width:1000px;display:block;border:1px solid #3a3f47;touch-action:none;background:#000}
 #fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin:8px 0}
 #fields label{display:flex;flex-direction:column;font-size:12px;gap:2px}
-#msg{margin:6px 0;font-size:12px;color:#9aa0a6}
+#locks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px;margin:6px 0 10px;padding:8px;border:1px solid #3a3f47;border-radius:6px}#locks label{display:flex;gap:6px;align-items:center;font-size:12px}#locks input{padding:0}#msg{margin:6px 0;font-size:12px;color:#9aa0a6}
 </style>
 </head>
 <body>
@@ -33,6 +33,8 @@ button{cursor:pointer}button.pri{background:#2d6cdf;border-color:#2d6cdf}
  <button data-n="-5,0">Left</button><button data-n="5,0">Right</button>
  <button data-n="0,-5">Up</button><button data-n="0,5">Down</button>
 </div>
+<div class="bar"><button id="lockbtn">Locks</button><button id="lockall">Lock all</button><button id="unlockall">Unlock all</button></div>
+<div id="locks" hidden></div>
 <div id="fields"></div>
 <div class="bar">
  <select id="ovsel"></select>
@@ -104,8 +106,9 @@ function draw(){
  if(s&&!s.hide){const b=box(s);ctx.setLineDash([6,4]);ctx.strokeStyle='#00e5ff';ctx.lineWidth=2;ctx.strokeRect(b[0]-2,b[1]-2,b[2]+4,b[3]+4);ctx.setLineDash([]);}
 }
 function listItems(){
- $('items').innerHTML=items().map((i,k)=>`<option value="${k}">${i.t==='image'?'overlay: '+i.file:i.id}</option>`).join('');
+ $('items').innerHTML=items().map((i,k)=>i.lock?'':`<option value="${k}">${i.t==='image'?'overlay: '+i.file:i.id}</option>`).join('');
  $('items').value=sel;
+ $('locks').innerHTML=items().map((i,k)=>`<label><input type="checkbox" data-lk="${k}" ${i.lock?'checked':''}>${i.t==='image'?'overlay: '+i.file:i.id}</label>`).join('');
 }
 function panel(){
  const i=items()[sel],f=$('fields');
@@ -125,6 +128,14 @@ $('fields').addEventListener('input',e=>{
  i[k]=e.target.type==='number'?+e.target.value:e.target.type==='checkbox'?e.target.checked:e.target.value;
  if(k==='hide'||k==='text'||k==='c'||k==='s'||k==='w'||k==='h'||k==='x'||k==='y')draw();
 });
+$('locks').addEventListener('change',e=>{
+ const k=e.target.dataset.lk;if(k===undefined)return;
+ items()[+k].lock=e.target.checked;if(e.target.checked&&sel===+k)sel=-1;
+ listItems();panel();draw();
+});
+$('lockbtn').onclick=()=>{$('locks').hidden=!$('locks').hidden;};
+$('lockall').onclick=()=>{items().forEach(i=>i.lock=true);sel=-1;listItems();panel();draw();};
+$('unlockall').onclick=()=>{items().forEach(i=>i.lock=false);listItems();panel();draw();};
 $('items').onchange=e=>select(+e.target.value);
 document.querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>{
  const i=items()[sel];if(!i)return;const [dx,dy]=b.dataset.n.split(',').map(Number);i.x+=dx;i.y+=dy;panel();draw();
@@ -133,7 +144,7 @@ function pos(e){const r=cv.getBoundingClientRect();return {x:(e.clientX-r.left)*
 cv.onpointerdown=e=>{
  const p=pos(e),a=items(),idx=a.map((_,k)=>k),order=[...idx.filter(k=>a[k].t!=='image').reverse(),...idx.filter(k=>a[k].t==='image').reverse()];
  let hit=-1;
- for(const k of order){if(a[k].hide)continue;const b=box(a[k]);if(p.x>=b[0]&&p.x<=b[0]+b[2]&&p.y>=b[1]&&p.y<=b[1]+b[3]){hit=k;break;}}
+ for(const k of order){if(a[k].hide||a[k].lock)continue;const b=box(a[k]);if(p.x>=b[0]&&p.x<=b[0]+b[2]&&p.y>=b[1]&&p.y<=b[1]+b[3]){hit=k;break;}}
  select(hit);
  if(hit>=0){drag={dx:p.x-a[hit].x,dy:p.y-a[hit].y};cv.setPointerCapture(e.pointerId);}
 };
@@ -189,5 +200,4 @@ $('file').onchange=async e=>{
 })();
 </script>
 </body>
-  </html>
-  
+</html>
