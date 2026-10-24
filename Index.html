@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Template Editor</title>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;padding:10px;background:#14161a;color:#e8eaed;font:14px/1.4 'Chakra Petch',Arial,sans-serif}
+.bar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+button,select,input{font:inherit;padding:8px;border-radius:6px;border:1px solid #3a3f47;background:#22262c;color:#e8eaed}
+button{cursor:pointer}button.pri{background:#2d6cdf;border-color:#2d6cdf}
+#cv{width:100%;max-width:1000px;display:block;border:1px solid #3a3f47;touch-action:none;background:#000}
+#fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin:8px 0}
+#fields label{display:flex;flex-direction:column;font-size:12px;gap:2px}
+#msg{margin:6px 0;font-size:12px;color:#9aa0a6}
+</style>
+</head>
+<body>
+<div class="bar">
+ <select id="mode"><option value="profile">Profile card</option><option value="leaderboard">Leaderboard card</option></select>
+ <select id="bgsel"></select>
+ <button id="rnd">Random background</button>
+ <button id="save" class="pri">Save template</button>
+ <button id="load">Load template</button>
+ <input id="file" type="file" accept=".json" hidden>
+</div>
+<canvas id="cv" width="1000" height="560"></canvas>
+<div id="msg"></div>
+<div class="bar">
+ <select id="items"></select>
+ <button data-n="-5,0">Left</button><button data-n="5,0">Right</button>
+ <button data-n="0,-5">Up</button><button data-n="0,5">Down</button>
+</div>
+<div id="fields"></div>
+<div class="bar">
+ <select id="ovsel"></select>
+ <button id="addov">Add overlay</button>
+ <button id="delov">Delete selected overlay</button>
+</div>
+<script>
+const W=1000,H=560,cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+const FONT="'Chakra Petch',Arial,sans-serif";
+const TIERS=['HT1','MT1','LT2','HT3','MT2','LT1','HT2','MT3'];
+const TC={HT:'#e6b422',MT:'#4aa3ff',LT:'#cd7f32'};
+const BG_COUNT=10,OV_COUNT=50;
+function defProfile(){
+ const a=[
+  {id:'username',t:'text',x:330,y:80,s:48,c:'#ffffff',sample:'PlayerName'},
+  {id:'rank',t:'text',x:330,y:140,s:26,c:'#e6b422',sample:'Rank #1'},
+  {id:'points',t:'text',x:330,y:176,s:22,c:'#ffffff',sample:'320 points'},
+  {id:'title',t:'text',x:330,y:210,s:22,c:'#4aa3ff',sample:'Combat Ace'},
+  {id:'region',t:'text',x:330,y:244,s:20,c:'#cccccc',sample:'NA'},
+  {id:'skin',t:'box',x:60,y:80,w:220,h:400,c:'#ffffff'}
+ ];
+ const m=['boxing','skywars','bedfight','mlgrush','finaluhc','topfight','nodebuff','battlerush'];
+ m.forEach((g,k)=>a.push({id:'tier_'+g,t:'tier',x:330+(k%4)*150,y:300+Math.floor(k/4)*115,w:70,h:70,s:20,c:'#ffffff'}));
+ return a;
+}
+function defBoard(){return [
+ {id:'heading',t:'label',x:60,y:40,s:44,c:'#ffffff',text:'Leaderboard'},
+ {id:'rows',t:'rows',x:60,y:110,w:880,h:42,s:24,c:'#ffffff'}
+];}
+const tpls={profile:defProfile(),leaderboard:defBoard()};
+let mode='profile',sel=-1,bg=null,drag=null;
+const imgs={},bgs={};
+const items=()=>tpls[mode];
+function load(src){return new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=src;});}
+function box(i){
+ if(i.t==='text'||i.t==='label'){ctx.font=`600 ${i.s}px ${FONT}`;return [i.x,i.y,ctx.measureText(i.text||i.sample).width,i.s*1.2];}
+ if(i.t==='tier')return [i.x,i.y,i.w,i.h+i.s*1.3];
+ if(i.t==='rows')return [i.x,i.y,i.w,i.h*10];
+ return [i.x,i.y,i.w,i.h];
+}
+function drawItem(i){
+ if(i.hide)return;
+ ctx.textBaseline='top';
+ if(i.t==='text'||i.t==='label'){ctx.font=`600 ${i.s}px ${FONT}`;ctx.fillStyle=i.c;ctx.fillText(i.text||i.sample,i.x,i.y);}
+ else if(i.t==='box'){ctx.setLineDash([8,6]);ctx.strokeStyle=i.c;ctx.lineWidth=2;ctx.strokeRect(i.x,i.y,i.w,i.h);ctx.setLineDash([]);ctx.fillStyle=i.c;ctx.font=`600 18px ${FONT}`;ctx.fillText('SKIN',i.x+8,i.y+8);}
+ else if(i.t==='tier'){
+  ctx.fillStyle='rgba(255,255,255,.15)';ctx.fillRect(i.x,i.y,i.w,i.h);
+  const k=Object.keys(TC);const tt=TIERS[items().filter(q=>q.t==='tier').indexOf(i)%8];
+  ctx.fillStyle=TC[tt.slice(0,2)];ctx.font=`600 ${i.s}px ${FONT}`;
+  const w=ctx.measureText(tt).width;ctx.fillText(tt,i.x+(i.w-w)/2,i.y+i.h+4);
+ }
+ else if(i.t==='rows'){
+  for(let n=0;n<10;n++){
+   const y=i.y+n*i.h;ctx.fillStyle=n%2?'rgba(255,255,255,.08)':'rgba(255,255,255,.14)';ctx.fillRect(i.x,y,i.w,i.h-4);
+   ctx.fillStyle=i.c;ctx.font=`600 ${i.s}px ${FONT}`;const ty=y+(i.h-4-i.s)/2;
+   ctx.fillText('#'+(n+1),i.x+14,ty);ctx.fillText('Player'+(n+1),i.x+110,ty);
+   const p=(400-n*30)+' pts',w=ctx.measureText(p).width;ctx.fillText(p,i.x+i.w-w-14,ty);
+  }
+ }
+ else if(i.t==='image'){const m=imgs[i.file];if(m)ctx.drawImage(m,i.x,i.y,i.w,i.h);}
+}
+function draw(){
+ ctx.clearRect(0,0,W,H);
+ if(bg)ctx.drawImage(bg,0,0,W,H);else{ctx.fillStyle='#262b33';ctx.fillRect(0,0,W,H);}
+ items().filter(i=>i.t==='image').forEach(drawItem);
+ items().filter(i=>i.t!=='image').forEach(drawItem);
+ const s=items()[sel];
+ if(s&&!s.hide){const b=box(s);ctx.setLineDash([6,4]);ctx.strokeStyle='#00e5ff';ctx.lineWidth=2;ctx.strokeRect(b[0]-2,b[1]-2,b[2]+4,b[3]+4);ctx.setLineDash([]);}
+}
+function listItems(){
+ $('items').innerHTML=items().map((i,k)=>`<option value="${k}">${i.t==='image'?'overlay: '+i.file:i.id}</option>`).join('');
+ $('items').value=sel;
+}
+function panel(){
+ const i=items()[sel],f=$('fields');
+ if(!i){f.textContent='Tap an item on the card, or pick one from the list.';return;}
+ const keys=[['x','X'],['y','Y']];
+ if(i.w!==undefined)keys.push(['w',i.t==='rows'?'Row width':'Width'],['h',i.t==='rows'?'Row height':'Height']);
+ if(i.s!==undefined)keys.push(['s','Text size']);
+ let h=keys.map(([k,l])=>`<label>${l}<input type="number" data-k="${k}" value="${Math.round(i[k])}"></label>`).join('');
+ if(i.c)h+=`<label>Colour<input type="color" data-k="c" value="${i.c}"></label>`;
+ if(i.t==='label')h+=`<label>Text<input data-k="text" value="${i.text}"></label>`;
+ h+=`<label>Hidden<input type="checkbox" data-k="hide" ${i.hide?'checked':''}></label>`;
+ f.innerHTML=h;
+}
+function select(k){sel=k;$('items').value=k;panel();draw();}
+$('fields').addEventListener('input',e=>{
+ const i=items()[sel],k=e.target.dataset.k;if(!i||!k)return;
+ i[k]=e.target.type==='number'?+e.target.value:e.target.type==='checkbox'?e.target.checked:e.target.value;
+ if(k==='hide'||k==='text'||k==='c'||k==='s'||k==='w'||k==='h'||k==='x'||k==='y')draw();
+});
+$('items').onchange=e=>select(+e.target.value);
+document.querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>{
+ const i=items()[sel];if(!i)return;const [dx,dy]=b.dataset.n.split(',').map(Number);i.x+=dx;i.y+=dy;panel();draw();
+});
+function pos(e){const r=cv.getBoundingClientRect();return {x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height};}
+cv.onpointerdown=e=>{
+ const p=pos(e),a=items(),idx=a.map((_,k)=>k),order=[...idx.filter(k=>a[k].t!=='image').reverse(),...idx.filter(k=>a[k].t==='image').reverse()];
+ let hit=-1;
+ for(const k of order){if(a[k].hide)continue;const b=box(a[k]);if(p.x>=b[0]&&p.x<=b[0]+b[2]&&p.y>=b[1]&&p.y<=b[1]+b[3]){hit=k;break;}}
+ select(hit);
+ if(hit>=0){drag={dx:p.x-a[hit].x,dy:p.y-a[hit].y};cv.setPointerCapture(e.pointerId);}
+};
+cv.onpointermove=e=>{
+ if(!drag)return;const i=items()[sel],p=pos(e);i.x=Math.round(p.x-drag.dx);i.y=Math.round(p.y-drag.dy);draw();
+};
+cv.onpointerup=()=>{if(drag){drag=null;panel();}};
+async function setBg(n){
+ if(!bgs[n])bgs[n]=await load(`backgrounds/bg${n}.png`);
+ bg=bgs[n];
+ $('msg').textContent=bg?'':'Background not found: backgrounds/bg'+n+'.png (upload it to the repo, GitHub Pages can take 1-2 minutes to update).';
+ draw();
+}
+$('bgsel').innerHTML=Array.from({length:BG_COUNT},(_,k)=>`<option value="${k+1}">Background ${k+1}</option>`).join('');
+$('bgsel').onchange=e=>setBg(+e.target.value);
+$('rnd').onclick=()=>{const n=1+Math.floor(Math.random()*BG_COUNT);$('bgsel').value=n;setBg(n);};
+$('mode').onchange=e=>{mode=e.target.value;sel=-1;listItems();panel();draw();};
+$('addov').onclick=async()=>{
+ const f=$('ovsel').value;if(!f)return;
+ if(!imgs[f])imgs[f]=await load('overlays/'+f);
+ const m=imgs[f];if(!m)return;
+ const w=200;items().push({id:f,t:'image',file:f,x:20,y:20,w,h:Math.round(w*m.height/m.width)});
+ listItems();select(items().length-1);
+};
+$('delov').onclick=()=>{
+ const i=items()[sel];if(!i||i.t!=='image'){$('msg').textContent='Select an overlay first.';return;}
+ items().splice(sel,1);sel=-1;listItems();panel();draw();
+};
+$('save').onclick=()=>{
+ const data={version:1,mode,width:W,height:H,backgrounds:{folder:'backgrounds/',pattern:'bg{n}.png',count:BG_COUNT},overlayFolder:'overlays/',items:items()};
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,1)],{type:'application/json'}));
+ a.download=mode+'-template.json';a.click();
+ $('msg').textContent='Saved '+mode+'-template.json. Upload it to the templates folder in the repo.';
+};
+$('load').onclick=()=>$('file').click();
+$('file').onchange=async e=>{
+ const f=e.target.files[0];if(!f)return;
+ try{
+  const d=JSON.parse(await f.text());if(!d.items||!d.mode)throw 0;
+  mode=d.mode;$('mode').value=mode;tpls[mode]=d.items;
+  for(const i of d.items)if(i.t==='image'&&!imgs[i.file])imgs[i.file]=await load('overlays/'+i.file);
+  sel=-1;listItems();panel();draw();$('msg').textContent='Template loaded.';
+ }catch(x){$('msg').textContent='That file is not a valid template.';}
+ e.target.value='';
+};
+(async()=>{
+ const list=[];
+ await Promise.all(Array.from({length:OV_COUNT},(_,k)=>load(`overlays/overlay${k+1}.png`).then(m=>{if(m){imgs['overlay'+(k+1)+'.png']=m;list.push(k+1);}})));
+ list.sort((a,b)=>a-b);
+ $('ovsel').innerHTML=list.length?list.map(n=>`<option value="overlay${n}.png">overlay${n}</option>`).join(''):'<option value="">No overlays found</option>';
+ try{await document.fonts.load(`600 20px "Chakra Petch"`);}catch(e){}
+ listItems();panel();setBg(1);
+})();
+</script>
+</body>
+  </html>
+  
