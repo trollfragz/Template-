@@ -82,7 +82,7 @@ function drawItem(i){
  if(i.t==='text'||i.t==='label'){ctx.font=`600 ${i.s}px ${FONT}`;ctx.fillStyle=i.c;ctx.fillText(i.text||i.sample,i.x,i.y);}
  else if(i.t==='box'){ctx.setLineDash([8,6]);ctx.strokeStyle=i.c;ctx.lineWidth=2;ctx.strokeRect(i.x,i.y,i.w,i.h);ctx.setLineDash([]);ctx.fillStyle=i.c;ctx.font=`600 18px ${FONT}`;ctx.fillText('SKIN',i.x+8,i.y+8);}
  else if(i.t==='tier'){
-  ctx.fillStyle='rgba(255,255,255,.15)';ctx.fillRect(i.x,i.y,i.w,i.h);
+  ctx.setLineDash([4,4]);ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1;ctx.strokeRect(i.x,i.y,i.w,i.h);ctx.setLineDash([]);
   const k=Object.keys(TC);const tt=TIERS[items().filter(q=>q.t==='tier').indexOf(i)%8];
   ctx.fillStyle=TC[tt.slice(0,2)];ctx.font=`600 ${i.s}px ${FONT}`;
   const w=ctx.measureText(tt).width;ctx.fillText(tt,i.x+(i.w-w)/2,i.y+i.h+4);
@@ -100,8 +100,9 @@ function drawItem(i){
 function draw(){
  ctx.clearRect(0,0,W,H);
  if(bg)ctx.drawImage(bg,0,0,W,H);else{ctx.fillStyle='#262b33';ctx.fillRect(0,0,W,H);}
- items().filter(i=>i.t==='image').forEach(drawItem);
+ items().filter(i=>i.t==='image'&&!i.front).forEach(drawItem);
  items().filter(i=>i.t!=='image').forEach(drawItem);
+ items().filter(i=>i.t==='image'&&i.front).forEach(drawItem);
  const s=items()[sel];
  if(s&&!s.hide){const b=box(s);ctx.setLineDash([6,4]);ctx.strokeStyle='#00e5ff';ctx.lineWidth=2;ctx.strokeRect(b[0]-2,b[1]-2,b[2]+4,b[3]+4);ctx.setLineDash([]);}
 }
@@ -119,6 +120,7 @@ function panel(){
  let h=keys.map(([k,l])=>`<label>${l}<input type="number" data-k="${k}" value="${Math.round(i[k])}"></label>`).join('');
  if(i.c)h+=`<label>Colour<input type="color" data-k="c" value="${i.c}"></label>`;
  if(i.t==='label')h+=`<label>Text<input data-k="text" value="${i.text}"></label>`;
+ if(i.t==='image')h+=`<label>In front of text<input type="checkbox" data-k="front" ${i.front?'checked':''}></label>`;
  h+=`<label>Hidden<input type="checkbox" data-k="hide" ${i.hide?'checked':''}></label>`;
  f.innerHTML=h;
 }
@@ -126,7 +128,7 @@ function select(k){sel=k;$('items').value=k;panel();draw();}
 $('fields').addEventListener('input',e=>{
  const i=items()[sel],k=e.target.dataset.k;if(!i||!k)return;
  i[k]=e.target.type==='number'?+e.target.value:e.target.type==='checkbox'?e.target.checked:e.target.value;
- if(k==='hide'||k==='text'||k==='c'||k==='s'||k==='w'||k==='h'||k==='x'||k==='y')draw();
+ if(k==='front'||k==='hide'||k==='text'||k==='c'||k==='s'||k==='w'||k==='h'||k==='x'||k==='y')draw();
 });
 $('locks').addEventListener('change',e=>{
  const k=e.target.dataset.lk;if(k===undefined)return;
@@ -142,7 +144,7 @@ document.querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>{
 });
 function pos(e){const r=cv.getBoundingClientRect();return {x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height};}
 cv.onpointerdown=e=>{
- const p=pos(e),a=items(),idx=a.map((_,k)=>k),order=[...idx.filter(k=>a[k].t!=='image').reverse(),...idx.filter(k=>a[k].t==='image').reverse()];
+ const p=pos(e),a=items(),idx=a.map((_,k)=>k),order=[...idx.filter(k=>a[k].t==='image'&&a[k].front).reverse(),...idx.filter(k=>a[k].t!=='image').reverse(),...idx.filter(k=>a[k].t==='image'&&!a[k].front).reverse()];
  let hit=-1;
  for(const k of order){if(a[k].hide||a[k].lock)continue;const b=box(a[k]);if(p.x>=b[0]&&p.x<=b[0]+b[2]&&p.y>=b[1]&&p.y<=b[1]+b[3]){hit=k;break;}}
  select(hit);
